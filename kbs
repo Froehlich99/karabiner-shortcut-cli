@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+import json
+import argparse
+import os
+
+KARABINER_CONFIG_PATH = os.path.expanduser("~/.config/karabiner/karabiner.json")
+
+
+def load_karabiner_config():
+    """Loads the karabiner.json configuration."""
+    if not os.path.exists(KARABINER_CONFIG_PATH):
+        print(f"Error: Karabiner config file not found at {KARABINER_CONFIG_PATH}")
+        exit(1)
+    with open(KARABINER_CONFIG_PATH, "r") as f:
+        return json.load(f)
+
+
+def save_karabiner_config(config):
+    """Saves the karabiner.json configuration."""
+    with open(KARABINER_CONFIG_PATH, "w") as f:
+        json.dump(config, f, indent=2)
+    print(f"Karabiner config saved to {KARABINER_CONFIG_PATH}")
+
+
+def add_shortcut(key_code, app_name):
+    """Adds a new application launch shortcut."""
+    config = load_karabiner_config()
+
+    # Assuming the first profile is the one to modify
+    # You might need to adjust this if you have multiple profiles and want to target a specific one
+    profile = config["profiles"][0]
+
+    # Find the "Hyper Key base layer" rule or create it if it doesn't exist
+    hyper_key_rule_found = False
+    for rule in profile["complex_modifications"]["rules"]:
+        if rule.get("description") == "Hyper Key base layer (Tab held down alone)":
+            hyper_key_rule_found = True
+            break
+
+    if not hyper_key_rule_found:
+        print("Error: 'Hyper Key base layer (Tab held down alone)' rule not found.")
+        print(
+            "Please ensure this rule exists in your karabiner.json before adding shortcuts."
+        )
+        print("You can manually add it or create a new rule for your shortcuts.")
+        exit(1)
+
+    # Construct the new rule
+    description = f"Open {app_name}"
+    shell_command = f"open -a '{app_name}.app'"
+
+    # Special case for Finder
+    if app_name.lower() == "finder":
+        shell_command = "osascript -e 'tell application \"Finder\" to launch' -e 'tell application \"Finder\" to activate'"
+
+    new_rule = {
+        "conditions": [{"name": "hyper", "type": "variable_if", "value": 1}],
+        "description": description,
+        "from": {"key_code": key_code, "modifiers": {"optional": ["any"]}},
+        "to": [{"shell_command": shell_command}],
+        "type": "basic",
+    }
+
+    # Add the new rule to the manipulators of the Hyper Key base layer
+    for rule in profile["complex_modifications"]["rules"]:
+        if rule.get("description") == "Hyper Key base layer (Tab held down alone)":
+            rule["manipulators"].append(new_rule)
+            print(f"Added shortcut: Hyper + {key_code} to open {app_name}")
+            break
+
+    save_karabiner_config(config)
+
+
+def list_shortcuts():
+    """Lists all application launch shortcuts."""
+    config = load_karabiner_config()
+    profile = config["profiles"][0]
+
+    print("Current Application Shortcuts (Hyper Key base layer):")
+    found_shortcuts = False
+    for rule in profile["complex_modifications"]["rules"]:
+        if rule.get("description") == "Hyper Key base layer (Tab held down alone)":
+            for manipulator in rule.get("manipulators", []):
+                if (
+                    manipulator.get("type") == "basic"
+                    and "shell_command" in manipulator.get("to", [{}])[0]
+                ):
+                    description = manipulator.get("description", "N/A")
+                    key_code = manipulator.get("from", {}).get("key_code", "N/A")
+                    shell_command = manipulator["to"][0]["shell_command"]
+                    print(
+                        f"- Description: {description}, Key: {key_code}, Command: {shell_command}"
+                    )
+                    found_shortcuts = True
+            break
+
+    if not found_shortcuts:
+        print("No application shortcuts found in the 'Hyper Key base layer'.")
+
+
+def remove_shortcut(identifier):
+    """Removes an application launch shortcut by description or key code."""
+    config = load_karabiner_config()
+    profile = config["profiles"][0]
+
+    removed_count = 0
+    for rule in profile["complex_modifications"]["rules"]:
+        if rule.get("description") == "Hyper Key base layer (Tab held down alone)":
+            initial_manipulator_count = len(rule["manipulators"])
+            rule["manipulators"] = [
+                m
+                for m in rule["manipulators"]
+                if not (
+                    (m.get("description") == identifier)
+                    or (
+                        m.get("from", {}).get("key_code") == identifier
+                        and "shell_command" in m.get("to", [{}])[0]
+                    )
+                )
+            ]
+            removed_count = initial_manipulator_count - len(rule["manipulators"])
+            break
+
+    if removed_count > 0:
+        print(f"Removed {removed_count} shortcut(s) matching '{identifier}'.")
+        save_karabiner_config(config)
+    else:
+        print(f"No shortcut found matching '{identifier}'.")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Manage Karabiner-Elements application shortcuts."
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # Add command
+    add_parser = subparsers.add_parser("add", help="Add a new application shortcut.")
+    add_parser.add_argument(
+        "key_code", help="The key code for the shortcut (e.g., 'h', 'j', 'k')."
+    )
+    add_parser.add_argument(
+        "app_name",
+        help="The name of the application (e.g., 'Ghostty', 'Visual Studio Code', 'Finder').",
+    )
+
+    # List command
+    list_parser = subparsers.add_parser(
+        "list", help="List all existing application shortcuts."
+    )
+
+    # Remove command
+    remove_parser = subparsers.add_parser(
+        "remove", help="Remove an application shortcut by its description or key code."
+    )
+    remove_parser.add_argument(
+        "identifier",
+        help="The description (e.g., 'Open Ghostty') or key code (e.g., 'h') of the shortcut to remove.",
+    )
+
+    args = parser.parse_args()
+
+    if args.command == "add":
+        add_shortcut(args.key_code, args.app_name)
+    elif args.command == "list":
+        list_shortcuts()
+    elif args.command == "remove":
+        remove_shortcut(args.identifier)
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()
