@@ -1,8 +1,4 @@
-# Shortcuts
-
-This repository contains various shortcuts and scripts.
-
-## kbs
+### Description:
 
 `kbs` is a Python script that helps manage application launch shortcuts within Karabiner-Elements. It specifically works with shortcuts configured under the "Hyper Key base layer (Tab held down alone)" rule.
 
